@@ -15,13 +15,13 @@
 
 //!SOT namespace
 namespace sot {
-    
+
     //!  %Shepard's method
     /*!
-     * Shepard's method, also known as Inverse Distance Weighting (IMW), assigns 
-     * function values to unknown points as a weighted average of the values 
-     * available at the known points. The weights are given by 
-     * \f$ w_i(x) = \|x-x_i\|^{-p/2}\f$ which makes it clear that points close 
+     * Shepard's method, also known as Inverse Distance Weighting (IMW), assigns
+     * function values to unknown points as a weighted average of the values
+     * available at the known points. The weights are given by
+     * \f$ w_i(x) = \|x-x_i\|^{-p/2}\f$ which makes it clear that points close
      * to \f$x\f$ are weighted higher.
      *
      * \class Shepard
@@ -128,7 +128,7 @@ namespace sot {
 
         vec evals(const mat &points) const {
             vec vals = arma::zeros<vec>(points.n_cols);
-            for(int i=0; i < points.n_cols; i++) {
+            for(uint32_t i=0; i < points.n_cols; i++) {
                 vals(i) = eval(points.col(i));
             }
             return vals;
@@ -137,7 +137,7 @@ namespace sot {
         vec evals(const mat &points, const mat &dists) const {
             return evals(points);
         }
-        
+
         //! Method for evaluating the kNN derivative at one point (not implemented)
         /*!
          * \throws std::logic_error Not available for Shepard

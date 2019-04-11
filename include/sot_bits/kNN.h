@@ -15,7 +15,7 @@
 
 //!SOT namespace
 namespace sot {
-    
+
     //!  k-nearest neighbors
     /*!
      * The kNN method is a robust regression method that approximates the value
@@ -117,7 +117,7 @@ namespace sot {
         }
         vec evals(const mat &points) const {
             vec vals = arma::zeros<vec>(points.n_cols);
-            for(int i=0; i < points.n_cols; i++) {
+            for(uint32_t i=0; i < points.n_cols; i++) {
                 vals(i) = eval(points.col(i));
             }
             return vals;
@@ -131,7 +131,7 @@ namespace sot {
          */
         vec deriv(const vec& point) const {
             throw std::logic_error("No derivatives for kNN");
-        }        
+        }
         void reset() {
             mNumPoints = 0;
         }

@@ -14,8 +14,8 @@
 #include <mutex>
 
 //!SOT namespace
-namespace sot {  
-    
+namespace sot {
+
     //!  The surrogate optimization algorithm
     /*!
      * This is a general surrogate optimization algorithm that uses the supplied
@@ -30,7 +30,7 @@ namespace sot {
      *
      * \author David Eriksson, dme65@cornell.edu
      */
-    
+
     class Optimizer {
     protected:
         std::shared_ptr<Problem> mData; /*!< A shared pointer to the optimization problem */
@@ -49,24 +49,24 @@ namespace sot {
         vec mxUp; /*!< Upper variable bounds (extracted from mData) */
         std::string mName = "Surrogate Optimizer"; /*!< Strategy name */
         int mNumThreads; /*!< Number of threads */
-        int mEvalCount = 0; /*!< Evaluation counter for evalauting batches */
+        uint32_t mEvalCount = 0; /*!< Evaluation counter for evalauting batches */
         std::mutex mMutex; /*!< Mutex for assigning evaluations to the threads */
-        
+
         //! Evalaute a batch of points in parallel
         /*!
          * \param batch Batch of points to be evaluated
          * \param funVals Vector to write the function values to
-         */        
+         */
         void evalBatch(const mat &batch, vec &funVals) {
             mMutex.lock();
-            int myEval = mEvalCount;
+            uint32_t myEval = mEvalCount;
             mEvalCount++;
             mMutex.unlock();
-            
+
             while(myEval < batch.n_cols) {
                 vec x = batch.col(myEval);
                 funVals[myEval] = mData->eval(x);
-                
+
                 mMutex.lock();
                 myEval = mEvalCount;
                 mEvalCount++;
@@ -84,8 +84,8 @@ namespace sot {
 
          * \throws std::logic_error If size of experimental design exceeds the evaluation budget
          */
-        Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes, 
-                std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling, 
+        Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes,
+                std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling,
                 int maxEvals) {
             mData = std::shared_ptr<Problem>(data);
             mExpDes = std::shared_ptr<ExpDesign>(expDes);
@@ -100,8 +100,8 @@ namespace sot {
             mFailTol = data->dim();
             mNumThreads = 1;
 
-            if(mMaxEvals < mInitPoints) { 
-                throw std::logic_error("Experimental design larger than evaluation budget"); 
+            if(mMaxEvals < mInitPoints) {
+                throw std::logic_error("Experimental design larger than evaluation budget");
             }
         }
         //! Constructor
@@ -112,42 +112,42 @@ namespace sot {
          * \param sampling A shared pointer to the adaptive sampling
          * \param maxEvals Evaluation budget
          * \param numThreads Number of threads to use for parallel evaluations
-         * 
+         *
          * \throws std::logic_error If size of experimental design exceeds the evaluation budget
          */
-        Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes, 
-                std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling, 
-                int maxEvals, int numThreads) : Optimizer(data, expDes, surf, sampling, maxEvals) 
+        Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes,
+                std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling,
+                int maxEvals, int numThreads) : Optimizer(data, expDes, surf, sampling, maxEvals)
         {
             mNumThreads = numThreads;
         }
-        
+
         //! Runs the optimization algorithm
         /*!
          * \return A Result object with the results from the run
          */
-        Result run() {   
+        Result run() {
             std::vector<std::thread> threads(mNumThreads);
             Result res(mMaxEvals, mDim);
             mNumEvals = 0;
-            
+
             double fBestLoc = std::numeric_limits<double>::max();
             vec xBestLoc;
-                        
+
         start:
             double sigma = mSigmaMax;
             int fail = 0;
             int succ = 0;
-            
+
             mat initDes = fromUnitBox(mExpDes->generatePoints(), mxLow, mxUp);
             vec initFunVal = arma::zeros(mInitPoints);
-            
-            ////////////////////////////// Evaluate the initial design //////////////////////////////\
+
+            ////////////////////////////// Evaluate the initial design //////////////////////////////
 
             if(mNumThreads > 1) { // Evaluate in synchronous parallel
-                mEvalCount = 0;            
+                mEvalCount = 0;
                 for(int i=0; i < mNumThreads; i++) {
-                    threads[i] = std::thread(&sot::Optimizer::evalBatch, this, 
+                    threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
                             std::ref(initDes), std::ref(initFunVal));
                 }
 
@@ -161,7 +161,7 @@ namespace sot {
                     initFunVal(i) = mData->eval(x);
                 }
             }
-            
+
             res.addEvals(initDes, initFunVal);
 
             int iStart = mNumEvals;
@@ -175,7 +175,7 @@ namespace sot {
                 }
                 mNumEvals++;
             }
-            
+
             ////////////////////////////// Add points to the rbf //////////////////////////////
             if(iStart < iEnd) {
                 mSurf->addPoints(res.X().cols(iStart, iEnd), res.fX().rows(iStart, iEnd));
@@ -184,17 +184,17 @@ namespace sot {
             while (mNumEvals < mMaxEvals) {
                 // Fit the RBF
                 mSurf->fit();
-                
+
                 // Find new points to evaluate
                 mat X = res.X().cols(iStart, mNumEvals - 1);
                 int newEvals = std::min<int>(mNumThreads, mMaxEvals - mNumEvals);
                 mat batch = mSampling->makePoints(xBestLoc, X, sigma*(mxUp - mxLow), newEvals);
-                vec batchVals = arma::zeros(newEvals);  
-                               
+                vec batchVals = arma::zeros(newEvals);
+
                 if(newEvals > 1) { // Evaluate in synchronous parallel
                     mEvalCount = 0;
                     for(int i=0; i < newEvals; i++) {
-                        threads[i] = std::thread(&sot::Optimizer::evalBatch, this, 
+                        threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
                                 std::ref(batch), std::ref(batchVals));
                     }
 
@@ -216,7 +216,7 @@ namespace sot {
                 for(int i=0; i < newEvals; i++) {
                     vec newx = batch.col(i);
                     double fVal = batchVals(i);
-                    
+
                     if(fVal < fBestLoc) {
                         if(fVal < fBestLoc - 1e-3 * fabs(fBestLoc)) {
                             fail = 0;
@@ -240,7 +240,7 @@ namespace sot {
                         succ = 0;
                         sigma /= 2.0;
                         int budget = mMaxEvals - mNumEvals - 1;
-                        // Restart if sigma is too small and the budget 
+                        // Restart if sigma is too small and the budget
                         // is larger than the initial design
                         if (sigma < mSigmaMin and budget > mInitPoints) {
                             fBestLoc = std::numeric_limits<double>::max();
@@ -259,16 +259,15 @@ namespace sot {
                 // Add to surface
                 if (batch.n_cols > 1) {
                     mSurf->addPoints(batch, batchVals);
-                } 
+                }
                 else {
                     mSurf->addPoint((vec)batch, batchVals(0));
                 }
             }
-            
+
             return res;
         }
     };
 }
 
 #endif
-
