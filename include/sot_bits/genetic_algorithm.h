@@ -249,9 +249,9 @@ namespace sot {
                 }
 
                 //Save the best individual
-                arma::uword ind;
-                functionValues.min(ind);
-                bestIndividual = newPopulation.col(ind);
+                arma::uword loop_ind;
+                functionValues.min(loop_ind);
+                bestIndividual = newPopulation.col(loop_ind);
                 //bestValue = functionValues(ind);
 
                 // Kill the old population
