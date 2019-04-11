@@ -175,7 +175,7 @@ namespace sot {
             arma::uword ind;
             functionValues.min(ind);
             vec bestIndividual = population.col(ind);
-            double bestValue = functionValues(ind);
+            //double bestValue = functionValues(ind);
 
             for(int gen = 0; gen < mNumGenerations - 1; gen++) {
 
@@ -252,7 +252,7 @@ namespace sot {
                 arma::uword ind;
                 functionValues.min(ind);
                 bestIndividual = newPopulation.col(ind);
-                bestValue = functionValues(ind);
+                //bestValue = functionValues(ind);
 
                 // Kill the old population
                 population = newPopulation;

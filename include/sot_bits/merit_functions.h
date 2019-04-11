@@ -89,7 +89,8 @@ namespace sot {
                 // Pick a winner
                 vec merit = weight * valScores + (1.0 -  weight) * distScores;
                 merit.elem(arma::find(minDists < distTol)).fill(std::numeric_limits<double>::max());
-                double scores = merit.min(winner);
+                //double scores = merit.min(winner);
+                merit.min(winner);
                 newx.col(i) = cand.col(winner);
             }
 

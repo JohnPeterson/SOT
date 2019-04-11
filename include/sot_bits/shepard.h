@@ -113,7 +113,8 @@ namespace sot {
             vec dists = squaredPointSetDistance<mat,vec>(point, X());
             if (arma::min(dists) < mDistTol) { // Just return the closest point
                 arma::uword closest;
-                double scores = dists.min(closest);
+                //double scores = dists.min(closest);
+                dists.min(closest);
                 return mfX(closest);
             }
             else {
