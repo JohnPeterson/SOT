@@ -1150,7 +1150,7 @@ namespace sot {
         /*!
          * \param dim Number of dimensions
          */
-        Schoen(int dim) : Schoen(dim, fmax(2^dim, 500)) {}
+        Schoen(int dim) : Schoen(dim, std::max(2^dim, 500)) {}
         //! Constructor for given k
         /*!
          * \param dim Number of dimensions
