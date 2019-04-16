@@ -49,6 +49,7 @@ namespace sot {
         vec mxUp; /*!< Upper variable bounds (extracted from mData) */
         std::string mName = "Surrogate Optimizer"; /*!< Strategy name */
         int mNumThreads; /*!< Number of threads */
+        bool museEvals; /*!< Use evals instead of eval in series */
         uint32_t mEvalCount = 0; /*!< Evaluation counter for evalauting batches */
         std::mutex mMutex; /*!< Mutex for assigning evaluations to the threads */
 
@@ -86,7 +87,7 @@ namespace sot {
          */
         Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes,
                 std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling,
-                int maxEvals) {
+                int maxEvals, int numThreads = 1, bool use_evals = false) {
             mData = std::shared_ptr<Problem>(data);
             mExpDes = std::shared_ptr<ExpDesign>(expDes);
             mSurf = std::shared_ptr<Surrogate>(surf);
@@ -98,28 +99,12 @@ namespace sot {
             mxLow = data->lBounds();
             mxUp = data->uBounds();
             mFailTol = data->dim();
-            mNumThreads = 1;
+            mNumThreads = numThreads;
+            museEvals = use_evals;
 
             if(mMaxEvals < mInitPoints) {
                 throw std::logic_error("Experimental design larger than evaluation budget");
             }
-        }
-        //! Constructor
-        /*!
-         * \param data A shared pointer to the optimization problem
-         * \param expDes A shared pointer to the experimental design
-         * \param surf A shared pointer to the surrogate model
-         * \param sampling A shared pointer to the adaptive sampling
-         * \param maxEvals Evaluation budget
-         * \param numThreads Number of threads to use for parallel evaluations
-         *
-         * \throws std::logic_error If size of experimental design exceeds the evaluation budget
-         */
-        Optimizer(std::shared_ptr<Problem>& data, std::shared_ptr<ExpDesign>& expDes,
-                std::shared_ptr<Surrogate>& surf, std::shared_ptr<Sampling>& sampling,
-                int maxEvals, int numThreads) : Optimizer(data, expDes, surf, sampling, maxEvals)
-        {
-            mNumThreads = numThreads;
         }
 
         //! Runs the optimization algorithm
@@ -145,15 +130,21 @@ namespace sot {
             ////////////////////////////// Evaluate the initial design //////////////////////////////
 
             if(mNumThreads > 1) { // Evaluate in synchronous parallel
-                mEvalCount = 0;
-                for(int i=0; i < mNumThreads; i++) {
-                    threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
-                            std::ref(initDes), std::ref(initFunVal));
+                if (museEvals) {
+                  initFunVal = mData->evals(initDes);
+                }
+                else {
+                  mEvalCount = 0;
+                  for(int i=0; i < mNumThreads; i++) {
+                      threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
+                              std::ref(initDes), std::ref(initFunVal));
+                  }
+
+                  for(int i=0; i < mNumThreads; i++) {
+                      threads[i].join();
+                  }
                 }
 
-                for(int i=0; i < mNumThreads; i++) {
-                    threads[i].join();
-                }
             }
             else { // Evaluate in serial
                 for(int i=0; i < mInitPoints; i++) {
@@ -191,16 +182,25 @@ namespace sot {
                 mat batch = mSampling->makePoints(xBestLoc, X, sigma*(mxUp - mxLow), newEvals);
                 vec batchVals = arma::zeros(newEvals);
 
+                printf("New eval = %d\n", newEvals);
+
                 if(newEvals > 1) { // Evaluate in synchronous parallel
-                    mEvalCount = 0;
-                    for(int i=0; i < newEvals; i++) {
-                        threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
-                                std::ref(batch), std::ref(batchVals));
+                    if (museEvals)
+                    {
+                      batchVals = mData->evals(batch);
+                    }
+                    else {
+                      mEvalCount = 0;
+                      for(int i=0; i < newEvals; i++) {
+                          threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
+                                  std::ref(batch), std::ref(batchVals));
+                      }
+
+                      for(int i=0; i < newEvals; i++) {
+                          threads[i].join();
+                      }
                     }
 
-                    for(int i=0; i < newEvals; i++) {
-                        threads[i].join();
-                    }
                 }
                 else { // Evaluate in serial
                     batchVals(0) = mData->eval((vec)batch);
