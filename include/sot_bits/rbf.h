@@ -613,11 +613,11 @@ namespace sot {
             mat U12 = arma::solve(arma::trimatl(mL(arma::span(0, nAct - 1), arma::span(0, nAct - 1))), B.rows(mp.head(nAct)));
             mat L21 = (arma::solve(arma::trimatl(mU(arma::span(0, nAct - 1), arma::span(0, nAct - 1)).t()), B)).t();
             mat C;
-            try {
-                C = arma::chol(K - L21*U12, "lower");
-            }
-            catch (std::runtime_error) {
-                std::cout << "Warning: Cholesky factorization failed, computing new LU from scratch..." << std::endl;
+
+            bool chol_success = arma::chol(C, K - L21*U12, "lower");
+
+            if (!chol_success) {
+                //std::cout << "Warning: Cholesky factorization failed, computing new LU from scratch..." << std::endl;
                 // Add new points
                 mfX.rows(nAct, nAct + n - 1) = funVals;
                 mCenters.cols(mNumPoints, mNumPoints + n - 1) = points;
@@ -626,6 +626,7 @@ namespace sot {
                 setPoints(X(), mfX.rows(mDimTail, nAct + n - 1));
                 return;
             }
+
             mL(arma::span(nAct, nAct + n - 1), arma::span(0, nAct - 1)) = L21;
             mL(arma::span(nAct, nAct + n - 1), arma::span(nAct, nAct + n - 1)) = C;
             mU(arma::span(0, nAct - 1), arma::span(nAct, nAct + n - 1)) = U12;

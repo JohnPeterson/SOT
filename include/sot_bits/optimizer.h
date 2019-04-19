@@ -182,7 +182,7 @@ namespace sot {
                 mat batch = mSampling->makePoints(xBestLoc, X, sigma*(mxUp - mxLow), newEvals);
                 vec batchVals = arma::zeros(newEvals);
 
-                printf("New eval = %d\n", newEvals);
+                //printf("New eval = %d\n", newEvals);
 
                 if(newEvals > 1) { // Evaluate in synchronous parallel
                     if (museEvals)
