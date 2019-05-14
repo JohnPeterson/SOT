@@ -14,7 +14,7 @@
 
 //!SOT namespace
 namespace sot {
-    
+
     //!  Abstract class for a SOT experimental design class
     /*!
      * This is the abstract class that should be used as a Base class for all
@@ -27,7 +27,7 @@ namespace sot {
      *
      * \author David Eriksson, dme65@cornell.edu
      */
-    
+
     class ExpDesign {
     public:
         //! Virtual method for getting the number of dimensions
@@ -37,7 +37,7 @@ namespace sot {
         //! Virtual method for generating an experimental design
         virtual mat generatePoints() const = 0; /*!< \returns An experimental design */
     };
-    
+
     //!  Fixed experimental design
     /*!
      * This is a simple class that always returns the experimental design points
@@ -49,7 +49,7 @@ namespace sot {
      *
      * \author David Eriksson, dme65@cornell.edu
      */
-    
+
     class FixedDesign : public ExpDesign {
     protected:
         int mDim; /*!< Number of dimensions */
@@ -60,10 +60,10 @@ namespace sot {
         /*!
           * \param points Experimental design points
           */
-        FixedDesign(mat& points) { 
-            mPoints = points; 
-            mDim = points.n_rows; 
-            mNumPoints = points.n_cols; 
+        FixedDesign(mat& points) {
+            mPoints = points;
+            mDim = points.n_rows;
+            mNumPoints = points.n_cols;
         }
         //! Method for getting the number of dimensions
         /*!
@@ -87,14 +87,14 @@ namespace sot {
             return mPoints;
         }
     };
-        
+
     //!  Symmetric Latin hypercube design
     /*!
      * Symmetric Latin hypercube sampling are popular for generating near-random
      * samples of parameter values from a multidimensional distribution. The
      * Symmetric Latin hypercube does better than the original Latin hypercube
      * when it comes to entropy and maximin and is the experimental design of
-     * choice for surrogate optimization. Due to rank-deficiencies it's 
+     * choice for surrogate optimization. Due to rank-deficiencies it's
      * recommended to use 2*dim points to ensure that the sample has rank dim.
      *
      * \class SymmetricLatinHypercube
@@ -110,7 +110,7 @@ namespace sot {
         //! Constructor
         /*!
          * \param numPoints Number of points in the experimental design
-         * \param dim Number of dimensions 
+         * \param dim Number of dimensions
          */
         SymmetricLatinHypercube(int numPoints, int dim) {
             mNumPoints = numPoints;
@@ -133,8 +133,8 @@ namespace sot {
         //! Method that generates a symmetric Latin hypercube design
         /*!
          *  \returns A symmetric Latin hypercube design
-         */ 
-        mat generatePoints() const { 
+         */
+        mat generatePoints() const {
             mat points = arma::zeros<mat>(mDim, mNumPoints);
             points.row(0) = arma::linspace<vec>(1, mNumPoints, mNumPoints).t();
 
@@ -155,7 +155,45 @@ namespace sot {
                     }
                 }
                 // Shuffle
-                points(j, arma::span(0, middleInd - 1)) = arma::shuffle(points(j, arma::span(0, middleInd - 1)));
+                // points(j, arma::span(0, middleInd - 1)) = arma::shuffle(points(j, arma::span(0, middleInd - 1)));
+
+                // copied with minor modifications and simplifications from op_shuffle_meat.hpp
+                // because we want to use my own RNG instead of ARMA's not thread safe RNG
+                const arma::uword N = middleInd;
+
+                // this is an in place shuffle
+                // see op_sort_index_bones.hpp for the definition of arma_sort_index_packet
+                // and the associated comparison functor
+                std::vector< arma::arma_sort_index_packet<int> > packet_vec(N);
+
+                for(arma::uword ii = 0; ii < N; ++ii)
+                {
+                  packet_vec[ii].val   = int(arma::arma_rng::randi<int>());
+                  packet_vec[ii].index = ii;
+                }
+
+                arma::arma_sort_index_helper_ascend<int> comparator;
+                std::sort( packet_vec.begin(), packet_vec.end(), comparator );
+
+                // reuse the val member variable of packet_vec
+                // to indicate whether a particular row or column
+                // has already been shuffled
+                for(arma::uword ii = 0; ii < N; ++ii)
+                {
+                  packet_vec[ii].val = 0;
+                }
+
+                for(arma::uword ii = 0; ii < N; ++ii)
+                {
+                  if(packet_vec[ii].val == 0)
+                  {
+                    const arma::uword jj = packet_vec[ii].index;
+
+                    std::swap(points(j,ii), points(j,jj));
+
+                    packet_vec[jj].val = 1;
+                  }
+                }
             }
 
             // Fill bottom
@@ -166,7 +204,7 @@ namespace sot {
             return points/double(mNumPoints);
         }
     };
-    
+
     //!  Latin hypercube design
     /*!
      * This is a simple class that always returns the experimental design points
@@ -186,7 +224,7 @@ namespace sot {
         //! Constructor
         /*!
          * \param numPoints Number of points in the experimental design
-         * \param dim Number of dimensions 
+         * \param dim Number of dimensions
          */
         LatinHypercube(int numPoints, int dim) {
             mNumPoints = numPoints;
@@ -209,7 +247,7 @@ namespace sot {
         //! Method that generates a symmetric Latin hypercube design
         /*!
          *  \returns A symmetric Latin hypercube design
-         */ 
+         */
         mat generatePoints() const {
             mat XBest;
             mat X;
@@ -234,9 +272,9 @@ namespace sot {
             }
 
             return XBest;
-        }   
+        }
     };
-    
+
     //!  2-Factorial design
     /*!
      * The 2-Factorial design is the corners of the hypercube [0,1]^dim and
@@ -254,7 +292,7 @@ namespace sot {
     public:
         //! Constructor
         /*!
-         * \param dim Number of dimensions 
+         * \param dim Number of dimensions
          */
         TwoFactorial(int dim) {
             mNumPoints = pow(2, dim);
@@ -278,7 +316,7 @@ namespace sot {
         //! Method that generates a symmetric Latin hypercube design
         /*!
          *  \returns A 2-Factorial design
-         */ 
+         */
         mat generatePoints() const {
             mat xSample = arma::zeros<mat>(mDim, mNumPoints);
             for(int i=0; i < mDim; i++) {
@@ -292,10 +330,10 @@ namespace sot {
             return xSample;
         }
     };
-    
+
     //!  Corners + Midpoint
     /*!
-     * This is an experimental design that consists of the 2-Factorial design 
+     * This is an experimental design that consists of the 2-Factorial design
      * plus the midpoint of the [0,1]^dim hypercube.
      *
      * \class CornersMid
@@ -309,7 +347,7 @@ namespace sot {
     public:
        //! Constructor
         /*!
-         * \param dim Number of dimensions 
+         * \param dim Number of dimensions
          */
         CornersMid(int dim) {
             mNumPoints = 1 + pow(2, dim);
@@ -333,7 +371,7 @@ namespace sot {
         //! Method that generates a symmetric Latin hypercube design
         /*!
          *  \returns A 2-Factorial design
-         */ 
+         */
         mat generatePoints() const {
             mat xSample = arma::zeros<mat>(mDim, mNumPoints);
 
