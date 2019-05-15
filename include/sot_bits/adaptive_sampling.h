@@ -43,6 +43,8 @@ namespace sot {
          * \return The proposed points
          */
         virtual mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints) = 0;
+
+        virtual mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints, std::mt19937_64& generator) = 0;
     };
 
     //! Stochastic RBF
@@ -129,6 +131,10 @@ namespace sot {
             mNumEvals += newPoints;
 
             return mMerit.pickPoints(cand, mSurf, points, newPoints, mDistTol);
+        }
+
+        mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints, std::mt19937_64& generator) {
+          return makePoints(xBest, points, sigma, newPoints);
         }
     };
 
@@ -235,6 +241,46 @@ namespace sot {
 
             return mMerit.pickPoints(cand, mSurf, points, newPoints, mDistTol);
         }
+
+        mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints, std::mt19937_64& generator) {
+          double dds_prob = std::min(20.0/mDim, 1.0) *
+              (1.0 - (std::log(mNumEvals + 1.0) / std::log(double(mBudget))));
+          mat cand = arma::repmat(xBest, 1, mNumCand);
+
+          std::uniform_real_distribution<double> zero_one_dist(0.0,1.0);
+          std::uniform_int_distribution<uint32_t> index_dist(0,mDim-1);
+          std::normal_distribution<double> normal_dist(0,1.0);
+          for(int i=0; i < mNumCand; i++) {
+
+              int count = 0;
+              for(int j=0; j < mDim; j++) {
+                  if(zero_one_dist(generator) < dds_prob) {
+                      count++;
+                      cand(j, i) += sigma(j)*normal_dist(generator);
+                  }
+              }
+              // If no index was perturbed we force one
+              if(count == 0) {
+                  int ind = index_dist(generator);
+                  cand(ind, i) += sigma(ind)*normal_dist(generator);
+              }
+
+              // Make sure we are still in the domain
+              for(int j=0; j < mDim; j++) {
+                  if(cand(j, i) > mxUp(j)) {
+                      cand(j, i) = fmax(2*mxUp(j) - cand(j, i), mxLow(j));
+                  }
+                  else if(cand(j, i) < mxLow(j)) {
+                      cand(j, i) = fmin(2*mxLow(j) - cand(j, i), mxUp(j));
+                  }
+              }
+          }
+
+          // Update counter
+          mNumEvals += newPoints;
+
+          return mMerit.pickPoints(cand, mSurf, points, newPoints, mDistTol);
+        }
     };
 
     //! Uniformly chosen candidate points
@@ -311,6 +357,10 @@ namespace sot {
             mNumEvals += newPoints;
 
             return mMerit.pickPoints(cand, mSurf, points, newPoints, mDistTol);
+        }
+
+        mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints, std::mt19937_64& generator) {
+          return makePoints(xBest, points, sigma, newPoints);
         }
     };
 
@@ -445,6 +495,10 @@ namespace sot {
                 Result res = ga.run();
                 return res.xBest();
             }
+        }
+
+        mat makePoints(const vec &xBest, const mat &points, const vec &sigma, int newPoints, std::mt19937_64& generator) {
+          return makePoints(xBest, points, sigma, newPoints);
         }
     };
 }

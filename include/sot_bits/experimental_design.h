@@ -12,6 +12,8 @@
 #include "utils.h"
 #include "merit_functions.h"
 
+#include <limits>
+
 //!SOT namespace
 namespace sot {
 
@@ -36,6 +38,7 @@ namespace sot {
         virtual int numPoints() const = 0; /*!< \returns The number of points */
         //! Virtual method for generating an experimental design
         virtual mat generatePoints() const = 0; /*!< \returns An experimental design */
+        virtual mat generatePoints(std::mt19937_64& generator) const = 0;
     };
 
     //!  Fixed experimental design
@@ -84,6 +87,10 @@ namespace sot {
          * \returns The fixed experimental design
          */
         mat generatePoints() const {
+            return mPoints;
+        }
+
+        mat generatePoints(std::mt19937_64& generator) const {
             return mPoints;
         }
     };
@@ -155,45 +162,7 @@ namespace sot {
                     }
                 }
                 // Shuffle
-                // points(j, arma::span(0, middleInd - 1)) = arma::shuffle(points(j, arma::span(0, middleInd - 1)));
-
-                // copied with minor modifications and simplifications from op_shuffle_meat.hpp
-                // because we want to use my own RNG instead of ARMA's not thread safe RNG
-                const arma::uword N = middleInd;
-
-                // this is an in place shuffle
-                // see op_sort_index_bones.hpp for the definition of arma_sort_index_packet
-                // and the associated comparison functor
-                std::vector< arma::arma_sort_index_packet<int> > packet_vec(N);
-
-                for(arma::uword ii = 0; ii < N; ++ii)
-                {
-                  packet_vec[ii].val   = int(arma::arma_rng::randi<int>());
-                  packet_vec[ii].index = ii;
-                }
-
-                arma::arma_sort_index_helper_ascend<int> comparator;
-                std::sort( packet_vec.begin(), packet_vec.end(), comparator );
-
-                // reuse the val member variable of packet_vec
-                // to indicate whether a particular row or column
-                // has already been shuffled
-                for(arma::uword ii = 0; ii < N; ++ii)
-                {
-                  packet_vec[ii].val = 0;
-                }
-
-                for(arma::uword ii = 0; ii < N; ++ii)
-                {
-                  if(packet_vec[ii].val == 0)
-                  {
-                    const arma::uword jj = packet_vec[ii].index;
-
-                    std::swap(points(j,ii), points(j,jj));
-
-                    packet_vec[jj].val = 1;
-                  }
-                }
+                points(j, arma::span(0, middleInd - 1)) = arma::shuffle(points(j, arma::span(0, middleInd - 1)));
             }
 
             // Fill bottom
@@ -202,6 +171,80 @@ namespace sot {
             }
 
             return points/double(mNumPoints);
+        }
+
+        mat generatePoints(std::mt19937_64& generator) const {
+          mat points = arma::zeros<mat>(mDim, mNumPoints);
+          points.row(0) = arma::linspace<vec>(1, mNumPoints, mNumPoints).t();
+
+          int middleInd = mNumPoints/2;
+
+          if (mNumPoints % 2 == 1) {
+              points.col(middleInd).fill(middleInd + 1);
+          }
+
+          // Fill upper
+          std::uniform_int_distribution<int> order_dist(0,std::numeric_limits<int>::max());
+          std::uniform_int_distribution<int> coin_dist(0,1);
+          for(int j=1; j < mDim; j++) {
+              for(int i=0; i < middleInd; i++) {
+                  if (static_cast<bool>(coin_dist(generator))) {
+                      points(j, i) = mNumPoints -i;
+                  }
+                  else {
+                      points(j, i) = i + 1;
+                  }
+              }
+              // Shuffle
+              // Technically arma's shuffle implementation isnt' correct, since they don't handle duplicated elements
+              // if you duplicate an int, in practice this is really unlikely, but if the matrix was larger you could
+              // run into trouble
+
+              // copied with minor modifications and simplifications from op_shuffle_meat.hpp
+              // because we want to use my own RNG instead of ARMA's not thread safe RNG
+              const arma::uword N = middleInd;
+
+              // this is an in place shuffle
+              // see op_sort_index_bones.hpp for the definition of arma_sort_index_packet
+              // and the associated comparison functor
+              std::vector< arma::arma_sort_index_packet<int> > packet_vec(N);
+
+              for(arma::uword ii = 0; ii < N; ++ii)
+              {
+                packet_vec[ii].val   = order_dist(generator);
+                packet_vec[ii].index = ii;
+              }
+
+              arma::arma_sort_index_helper_ascend<int> comparator;
+              std::sort( packet_vec.begin(), packet_vec.end(), comparator );
+
+              // reuse the val member variable of packet_vec
+              // to indicate whether a particular row or column
+              // has already been shuffled
+              for(arma::uword ii = 0; ii < N; ++ii)
+              {
+                packet_vec[ii].val = 0;
+              }
+
+              for(arma::uword ii = 0; ii < N; ++ii)
+              {
+                if(packet_vec[ii].val == 0)
+                {
+                  const arma::uword jj = packet_vec[ii].index;
+
+                  std::swap(points(j,ii), points(j,jj));
+
+                  packet_vec[jj].val = 1;
+                }
+              }
+          }
+
+          // Fill bottom
+          for(int i=middleInd; i < mNumPoints; i++) {
+              points.col(i) = mNumPoints + 1 - points.col(mNumPoints - 1 - i);
+          }
+
+          return points/double(mNumPoints);
         }
     };
 
@@ -273,6 +316,10 @@ namespace sot {
 
             return XBest;
         }
+
+        mat generatePoints(std::mt19937_64& generator) const {
+          return generatePoints();
+        }
     };
 
     //!  2-Factorial design
@@ -328,6 +375,10 @@ namespace sot {
                 }
             }
             return xSample;
+        }
+
+        mat generatePoints(std::mt19937_64& generator) const {
+          return generatePoints();
         }
     };
 
@@ -386,6 +437,10 @@ namespace sot {
             xSample.col(mNumPoints - 1).fill(0.5);
 
             return xSample;
+        }
+
+        mat generatePoints(std::mt19937_64& generator) const {
+          return generatePoints();
         }
     };
 }

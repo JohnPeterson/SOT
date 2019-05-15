@@ -267,6 +267,163 @@ namespace sot {
 
             return res;
         }
+
+        Result run(std::mt19937_64& generator) {
+            std::vector<std::thread> threads(mNumThreads);
+            Result res(mMaxEvals, mDim);
+            mNumEvals = 0;
+
+            double fBestLoc = std::numeric_limits<double>::max();
+            vec xBestLoc;
+
+        start:
+            double sigma = mSigmaMax;
+            int fail = 0;
+            int succ = 0;
+
+            mat initDes = fromUnitBox(mExpDes->generatePoints(generator), mxLow, mxUp);
+            vec initFunVal = arma::zeros(mInitPoints);
+
+            ////////////////////////////// Evaluate the initial design //////////////////////////////
+
+            if(mNumThreads > 1) { // Evaluate in synchronous parallel
+                if (museEvals) {
+                  initFunVal = mData->evals(initDes);
+                }
+                else {
+                  mEvalCount = 0;
+                  for(int i=0; i < mNumThreads; i++) {
+                      threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
+                              std::ref(initDes), std::ref(initFunVal));
+                  }
+
+                  for(int i=0; i < mNumThreads; i++) {
+                      threads[i].join();
+                  }
+                }
+
+            }
+            else { // Evaluate in serial
+                for(int i=0; i < mInitPoints; i++) {
+                    vec x = initDes.col(i);
+                    initFunVal(i) = mData->eval(x);
+                }
+            }
+
+            res.addEvals(initDes, initFunVal);
+
+            int iStart = mNumEvals;
+            int iEnd = std::min<int>(mNumEvals + mInitPoints - 1, mMaxEvals - 1);
+            for(int i=mNumEvals; i <= iEnd ; i++) {
+                vec x = initDes.col(i - iStart);
+                double fx = initFunVal[i - iStart];
+                if(fx < fBestLoc) {
+                    xBestLoc = x;
+                    fBestLoc = fx;
+                }
+                mNumEvals++;
+            }
+
+            ////////////////////////////// Add points to the rbf //////////////////////////////
+            if(iStart < iEnd) {
+                mSurf->addPoints(res.X().cols(iStart, iEnd), res.fX().rows(iStart, iEnd));
+            }
+            ////////////////////////////// The fun starts now! //////////////////////////////////////
+            while (mNumEvals < mMaxEvals) {
+                // Fit the RBF
+                mSurf->fit();
+
+                // Find new points to evaluate
+                mat X = res.X().cols(iStart, mNumEvals - 1);
+                int newEvals = std::min<int>(mNumThreads, mMaxEvals - mNumEvals);
+                mat batch = mSampling->makePoints(xBestLoc, X, sigma*(mxUp - mxLow), newEvals, generator);
+                vec batchVals = arma::zeros(newEvals);
+
+                //printf("New eval = %d\n", newEvals);
+
+                if(newEvals > 1) { // Evaluate in synchronous parallel
+                    if (museEvals)
+                    {
+                      batchVals = mData->evals(batch);
+                    }
+                    else {
+                      mEvalCount = 0;
+                      for(int i=0; i < newEvals; i++) {
+                          threads[i] = std::thread(&sot::Optimizer::evalBatch, this,
+                                  std::ref(batch), std::ref(batchVals));
+                      }
+
+                      for(int i=0; i < newEvals; i++) {
+                          threads[i].join();
+                      }
+                    }
+
+                }
+                else { // Evaluate in serial
+                    batchVals(0) = mData->eval((vec)batch);
+                }
+
+                // Update evaluation counter
+                mNumEvals += newEvals;
+
+                // Add to results
+                res.addEvals(batch, batchVals);
+
+                // Process evaluations
+                for(int i=0; i < newEvals; i++) {
+                    vec newx = batch.col(i);
+                    double fVal = batchVals(i);
+
+                    if(fVal < fBestLoc) {
+                        if(fVal < fBestLoc - 1e-3 * fabs(fBestLoc)) {
+                            fail = 0;
+                            succ++;
+                        }
+                        else {
+                            fail++;
+                            succ = 0;
+                        }
+                        fBestLoc= fVal;
+                        xBestLoc = newx;
+                    }
+                    else {
+                        fail++;
+                        succ = 0;
+                    }
+
+                    // Update sigma if necessary
+                    if(fail == mFailTol) {
+                        fail = 0;
+                        succ = 0;
+                        sigma /= 2.0;
+                        int budget = mMaxEvals - mNumEvals - 1;
+                        // Restart if sigma is too small and the budget
+                        // is larger than the initial design
+                        if (sigma < mSigmaMin and budget > mInitPoints) {
+                            fBestLoc = std::numeric_limits<double>::max();
+                            mSurf->reset();
+                            mSampling->reset(mMaxEvals - mNumEvals - mInitPoints);
+                            goto start;
+                        }
+                    }
+                    if(succ == mSuccTol) {
+                        fail = 0;
+                        succ = 0;
+                        sigma = fmin(sigma * 2.0, mSigmaMax);
+                    }
+                }
+
+                // Add to surface
+                if (batch.n_cols > 1) {
+                    mSurf->addPoints(batch, batchVals);
+                }
+                else {
+                    mSurf->addPoint((vec)batch, batchVals(0));
+                }
+            }
+
+            return res;
+        }
     };
 }
 
